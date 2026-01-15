@@ -21,7 +21,7 @@ Defensive Fingerprinting: Automated detection of WAFs (Cloudflare/Akamai) and se
 
 Phase 6 Consent Gate: Strict manual control over "noisy" enumeration (Fuzzing) to prevent accidental IDS/IPS triggers.
 
-🚦 The 12-Phase Operational Workflow
+🚦 The 11-Phase Operational Workflow
 VedicRecon follows a rigorous, legally-defensible reconnaissance methodology:
 
 Phase 0-1: Environment Verification & Target Ingestion.
@@ -35,8 +35,6 @@ Phase 7-8: Data Correlation & Immutable Master JSON Generation.
 Phase 9: Privacy Scrubbing (The Anonymization Layer).
 
 Phase 10-11: AI-Assisted Intelligence Drafting & Professional Handoff.
-
-Phase 12: Remediation Verification (Delta Scanning).
 
 🛠️ Installation & Quick Start
 🐧 Linux

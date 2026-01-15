@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Go
+bin/
+*.exe
+*.out
+
+# Virtual environments / env
+venv/
+.env
+
+# Runtime data (DO NOT COMMIT)
+output/
+reports/
+logs/
+*.log
+
+# Secrets & keys
+*.key
+*.pem
+*.crt
+
+# OS junk
+.DS_Store
+Thumbs.db
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Go
+bin/
+*.exe
+*.out
+
+# Virtual env
+venv/
+.env
+
+# Output / runtime data
+output/
+reports/
+logs/
+*.log
+
+# Secrets
+*.key
+*.pem
+*.crt
+
+# OS
+.DS_Store
+Thumbs.db

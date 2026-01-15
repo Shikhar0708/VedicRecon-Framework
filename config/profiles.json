@@ -1,0 +1,46 @@
+{
+  "nmap": {
+    "scan_profiles": {
+      "silent": {
+        "name": "Stealth Discovery",
+        "flags": "-sS -Pn",
+        "description": "Bypasses ping blocks, avoids full handshakes."
+      },
+      "balanced": {
+        "name": "Service Enumeration",
+        "flags": "-sC -sV",
+        "description": "Standard scripts and versioning. Good for general recon."
+      },
+      "aggressive": {
+        "name": "Full Infrastructure Discovery",
+        "flags": "-sS -sV -O -p- -T4 --min-rate 5000",
+        "description": "Fastest scan, finds all ports and OS. Very noisy."
+      }
+    }
+  },
+  "ffuf": {
+    "profiles": {
+      "stealth": {
+        "threads": 5,
+        "delay": 0.5,
+        "extensions": ".html,.php,.txt",
+        "flags": "-mc 200,204,301,302,307,401 -ac",
+        "description": "Slow and steady to avoid WAF/IPS triggers."
+      },
+      "standard": {
+        "threads": 40,
+        "delay": 0,
+        "extensions": ".html,.php,.txt,.jsp,.asp",
+        "flags": "-mc 200,204,301,302,307,401 -ac",
+        "description": "Standard discovery for non-sensitive environments."
+      },
+      "rapid": {
+        "threads": 100,
+        "delay": 0,
+        "extensions": ".all",
+        "flags": "-mc all -ac",
+        "description": "High-speed fuzzing for internal/authorized infrastructure."
+      }
+    }
+  }
+}

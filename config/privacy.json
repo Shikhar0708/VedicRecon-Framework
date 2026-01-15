@@ -1,0 +1,33 @@
+{
+  "retention_policy": {
+    "raw_logs_days": 7,
+    "master_json_days": 30,
+    "scrubbed_json_days": 90,
+    "auto_purge_enabled": true
+  },
+  "scrubbing_rules": {
+    "aggressive_mode": false,
+    "targets_to_scrub": [
+      "ipv4_addresses",
+      "ipv6_addresses",
+      "domain_names",
+      "mac_addresses"
+    ],
+    "sensitive_patterns": {
+      "api_keys": "[a-zA-Z0-9]{32,45}",
+      "secrets": "(password|secret|passwd|auth_token|bearer)",
+      "emails": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    },
+    "replacement_strategy": "mask", 
+    "mask_character": "*"
+  },
+  "ai_sharing_policy": {
+    "allow_external_processing": true,
+    "enforce_scrubbing_before_upload": true,
+    "redact_internal_hostnames": true
+  },
+  "legal_notice": {
+    "require_acceptance": true,
+    "notice_text": "VedicRecon is for authorized testing only. All activities are logged locally for audit purposes."
+  }
+}

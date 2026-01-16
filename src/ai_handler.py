@@ -89,9 +89,9 @@ class AIHandler:
             vms_score=vms_score
         )
 
-        # 🔐 Prompt fingerprint for audit / reproducibility
+        # Prompt fingerprint for audit / reproducibility
         prompt_fingerprint = hash(system_instruction)
-        print(f"[i] Prompt Fingerprint: {prompt_fingerprint}")
+        self.last_prompt_fingerprint = prompt_fingerprint
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -119,6 +119,68 @@ class AIHandler:
                         time.sleep(((attempt + 1) * 5) + random.uniform(1, 3))
                         continue
                 return f"[!] AI Engine Error: {str(e)}"
+
+def normalize_governance_noise(text: str) -> str:
+    """
+    Collapses runaway governance / advisory repetitions
+    without weakening policy or AI constraints.
+    """
+    # Collapse excessive advisory spam
+    text = re.sub(
+        r'(ONLY_ADVISORY[_ ]?){3,}',
+        'ONLY_ADVISORY',
+        text
+    )
+
+    # Prevent duplicated NOTICE blocks
+    text = re.sub(
+        r'(> \*\*NOTICE:\*\* Findings are advisory and require manual validation before remediation\.){2,}',
+        r'\1',
+        text
+    )
+
+    # Trim absurd horizontal rule spam
+    text = re.sub(
+        r'\n-{10,}\n',
+        '\n---\n',
+        text
+    )
+
+    return text
+
+def normalize_markdown_tables(text: str) -> str:
+    """
+    Repairs malformed markdown tables produced by LLMs.
+    Ensures headers, separators, and row termination.
+    """
+    lines = text.splitlines()
+    fixed = []
+    in_table = False
+    header_seen = False
+
+    for line in lines:
+        if line.strip().startswith("|"):
+            in_table = True
+
+            # Ensure row ends with pipe
+            if not line.rstrip().endswith("|"):
+                line = line.rstrip() + " |"
+
+            # Detect header row
+            if not header_seen:
+                fixed.append(line)
+                col_count = line.count("|") - 1
+                fixed.append("|" + " --- |" * col_count)
+                header_seen = True
+                continue
+
+            fixed.append(line)
+        else:
+            in_table = False
+            header_seen = False
+            fixed.append(line)
+
+    return "\n".join(fixed)
 
 
 def run_ai_reporting(
@@ -157,8 +219,11 @@ def run_ai_reporting(
         )
 
         final_md = (raw_report.strip() + footer).rstrip()
+        final_md = normalize_governance_noise(final_md)
+        final_md = normalize_markdown_tables(final_md)
         final_md = re.sub(r' {5,}', ' ', final_md)
         final_md = re.sub(r'\s+$', '\n', final_md)
+
 
         report_path = report_dir / f"VedicRecon_Intelligence_Report_{int(time.time())}.md"
         with open(report_path, 'w', encoding='utf-8') as f:
@@ -172,3 +237,5 @@ def run_ai_reporting(
     finally:
         progress.stop()
         anim_thread.join()
+    if hasattr(handler, "last_prompt_fingerprint"):
+        print(f"[i] Prompt Fingerprint: {handler.last_prompt_fingerprint}")

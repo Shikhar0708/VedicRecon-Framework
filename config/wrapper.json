@@ -1,4 +1,4 @@
 {
-  "Packages_linux" :["ffuf","nmap","curl","arp-scan"],
-  "Packages_windows" :["ffuf","nmap","curl","arp-scan"]
+  "Packages_linux" :["ffuf","nmap"],
+  "Packages_windows" :["ffuf","nmap"]
 }

@@ -1,90 +1,97 @@
-def calculate_vms(analysis: dict) -> int:
+def calculate_vms(analysis: dict) -> tuple:
     """
-    Deterministic Infrastructure Maturity Score (VMS v1.1).
-    Engine-owned. Hardened against NoneType errors.
+    Deterministic Infrastructure Maturity Score (VMS v1.2).
+    Returns: (int score, list findings)
     """
-    # 1. Initialize safe defaults
+
+    # --- Initialization ---
     score = 100
+    findings = []
+
     if not analysis:
-        return 0
+        return 0, ["No analysis data available"]
 
-    edge = analysis.get("is_edge_protected", False)
+    # Normalize core inputs
+    edge = bool(analysis.get("is_edge_protected", False))
 
-    # --- Base Maturity Deductions ---
+    ports = str(analysis.get("Open_Ports") or analysis.get("ports") or "")
+    services = str(analysis.get("Services") or analysis.get("services") or "").lower()
+    banners = str(analysis.get("OS_Tech") or analysis.get("banners") or "").lower()
 
-    if not edge:
+    # --- Base Architecture Assessment ---
+    if edge:
+        findings.append("Edge / Reverse-Proxy Abstraction Detected")
+    else:
         score -= 25
+        findings.append("Direct Exposure: No Edge Protection (-25)")
 
-    # FIX: Ensure density is a float and handle missing keys safely
+    # Defensive Density (internal layers, not perimeter)
     density_raw = analysis.get("defensive_density") or "0%"
     try:
-        density_val = float(str(density_raw).replace("%", ""))
-    except (ValueError, TypeError):
+        density_val = float(str(density_raw).replace("%", "").split()[0])
+    except (ValueError, TypeError, IndexError):
         density_val = 0.0
 
     if density_val == 0:
-        score -= 20
+        score -= 15
+        findings.append("Zero Internal Defensive Density (-15)")
     elif density_val < 50:
-        score -= 10
+        score -= 8
+        findings.append("Low Internal Defensive Density (-8)")
 
-    # Logic: Absence of OS info is common in hardened/edge-protected setups
-    if analysis.get("os") == "DETECTION_FAILED" and not edge:
-        score -= 5 # Minor penalty only if no edge is shielding it
-
-    if not analysis.get("detected_vendors") and not edge:
-        score -= 10
-
-    services = str(analysis.get("services") or "").lower()
-    if "tcpwrapped" in services and not edge:
-        score -= 10
-
-    # --- Expanded Critical Risk Flags ---
-
+    # --- Critical Exposure Flags (Evidence-Gated) ---
     critical_flags = {
-        "unauth_database": False,
-        "rce_surface": False,
+        "exposed_database": False,
+        "probable_rce_surface": False,
         "exposed_cloud_metadata": False,
         "insecure_docker_socket": False
     }
 
-    ports = str(analysis.get("ports") or "")
-    banners = str(analysis.get("banners") or "").lower()
-
-    # 1. Database Check
+    # 1. Exposed Database (presence ≠ unauth, handled carefully)
     if "mongodb" in services or "27017" in ports:
-        critical_flags["unauth_database"] = True
+        critical_flags["exposed_database"] = True
+        findings.append("CRITICAL: Database Service Directly Exposed")
 
-    # 2. RCE Surface Check (Common dev ports)
-    if any(p in ports for p in ["3000", "8080", "8081"]) and "http" in services:
-        critical_flags["rce_surface"] = True
+    # 2. Probable RCE / Dev Surface (context-aware)
+    if any(p in ports for p in ["3000", "8080", "8081"]) and not edge:
+        critical_flags["probable_rce_surface"] = True
+        findings.append("HIGH: Unprotected Development / Application Surface")
 
-    # 3. Cloud Metadata (IMDSv1/v2)
-    if "metadata" in banners or "instance-id" in banners:
+    # 3. Cloud Metadata Indicators (low-noise signals only)
+    if any(k in banners for k in ["metadata", "instance-id", "169.254.169.254"]):
         critical_flags["exposed_cloud_metadata"] = True
+        findings.append("CRITICAL: Potential Cloud Metadata Exposure")
 
-    # 4. Insecure Docker Socket (Remote API)
-    if "2375" in ports or "docker" in services:
+    # 4. Docker Remote API
+    if "2375" in ports or ("docker" in services and not edge):
         critical_flags["insecure_docker_socket"] = True
+        findings.append("CRITICAL: Docker Remote API Exposed")
 
-    # --- Updated Risk-Based Score Caps ---
-
+    # --- Risk-Based Score Capping (Non-Linear Impact) ---
     score_cap = 100
 
-    if critical_flags["unauth_database"]:
-        score_cap = min(score_cap, 40)
-    if critical_flags["rce_surface"]:
+    if critical_flags["exposed_database"]:
+        score_cap = min(score_cap, 45)
+
+    if critical_flags["probable_rce_surface"]:
         score_cap = min(score_cap, 35)
+
     if critical_flags["exposed_cloud_metadata"]:
-        score_cap = min(score_cap, 20) # High severity
+        score_cap = min(score_cap, 20)
+
     if critical_flags["insecure_docker_socket"]:
-        score_cap = min(score_cap, 15) # Critical severity
+        score_cap = min(score_cap, 15)
 
-    # Multi-factor Failure (The 'Meltdown' Cap)
-    if sum(critical_flags.values()) >= 2:
+    # --- Multi-Failure Meltdown Logic ---
+    active_criticals = [k for k, v in critical_flags.items() if v]
+
+    if len(active_criticals) >= 2:
         score_cap = min(score_cap, 10)
+        findings.append(
+            f"MELTDOWN: Multiple Critical Exposures ({', '.join(active_criticals)})"
+        )
 
-    # Final Calculation
-    score = min(score, score_cap)
-    
-    # Final safety: Ensure return is an int and within 0-100 range
-    return max(0, min(100, int(score)))
+    # --- Final Score Resolution ---
+    final_score = min(score, score_cap)
+
+    return max(0, min(100, int(final_score))), findings

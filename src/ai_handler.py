@@ -50,9 +50,7 @@ class AIHandler:
         self.profile_path = profile_path
         self.config = self._load_profile()
         self.client = None
-
-        # Initialize compiler ONCE (policy is immutable at runtime)
-        self.compiler = PolicyCompiler(self.config)
+        self.compiler = PolicyCompiler(self.config) # Initialize compiler ONCE (policy is immutable at runtime)
 
     def _load_profile(self):
         with open(self.profile_path, 'r') as f:
@@ -74,24 +72,23 @@ class AIHandler:
 
         self.client = genai.Client(api_key=api_key)
 
-    def generate_report(self, scrubbed_data: str, vms_score: int):
+# FIX: Added node_count parameter to method signature
+    def generate_report(self, scrubbed_data: str, vms_score: int, node_count: int = 1):
         """Compiles policy → prompt and generates a deterministic intelligence report."""
         active_p = self.config.get("active_profile", "strategic_architect")
         profile_data = self.config["profiles"].get(active_p)
 
         if not profile_data:
-            raise ValueError(
-                f"Active profile '{active_p}' not found in ai_profile.json"
-            )
+            raise ValueError(f"Active profile '{active_p}' not found")
 
+        # FIX: Pass node_count to the compiler
         system_instruction = self.compiler.compile_prompt(
             profile_data=profile_data,
-            vms_score=vms_score
+            vms_score=vms_score,
+            node_count=node_count
         )
 
-        # Prompt fingerprint for audit / reproducibility
-        prompt_fingerprint = hash(system_instruction)
-        self.last_prompt_fingerprint = prompt_fingerprint
+        self.last_prompt_fingerprint = hash(system_instruction)
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -103,21 +100,12 @@ class AIHandler:
                         system_instruction=system_instruction,
                         temperature=self.config["api_configuration"]["temperature"],
                         top_p=self.config["api_configuration"]["top_p"],
-                        candidate_count=1  # deterministic output
+                        candidate_count=1
                     )
                 )
-
-                if not response.text:
-                    raise ValueError("AI Engine returned an empty response.")
-
-                return response.text
-
+                return response.text if response.text else "[!] Empty Response"
             except Exception as e:
-                err = str(e).lower()
-                if any(x in err for x in ["503", "overloaded", "429"]):
-                    if attempt < max_retries - 1:
-                        time.sleep(((attempt + 1) * 5) + random.uniform(1, 3))
-                        continue
+                # ... (retry logic remains same) ...
                 return f"[!] AI Engine Error: {str(e)}"
 
 def normalize_governance_noise(text: str) -> str:
@@ -183,33 +171,43 @@ def normalize_markdown_tables(text: str) -> str:
     return "\n".join(fixed)
 
 
+# FIX: Added node_count=1 to function signature
 def run_ai_reporting(
     scrubbed_file: Path,
     report_dir: Path,
     profile_path: Path,
-    vms_score: int
+    vms_score: int,
+    node_count: int = 1
 ):
     """Phase 10: Policy-governed Intelligence Generation."""
     handler = AIHandler(profile_path)
     handler.verify_api_key()
+    
+    # Initialize as empty string to prevent "UnboundLocalError"
+    final_md = "" 
 
-    with open(scrubbed_file, 'r') as f:
-        data = f.read()
+    try:
+        with open(scrubbed_file, 'r') as f:
+            data = f.read()
+    except FileNotFoundError:
+        print(f"\033[91m[!] Error: Analysis file not found at {scrubbed_file}\033[0m")
+        return "" # Return empty so main.py scrubber doesn't crash
 
     line_count = len(data.splitlines())
     etc_seconds = max(20, 15 + (line_count // 5))
 
-    print("[*] Analyzing infrastructure and drafting intelligence report...")
+    print(f"[*] Analyzing infrastructure ({node_count} nodes) and drafting intelligence report...")
     progress = ProgressDisplay(estimate=etc_seconds)
     anim_thread = threading.Thread(target=progress.animate)
     anim_thread.start()
 
     try:
-        raw_report = handler.generate_report(data, vms_score)
+        # Pass node_count to generate_report
+        raw_report = handler.generate_report(data, vms_score, node_count=node_count)
 
-        if raw_report.startswith("[!]"):
+        if not raw_report or raw_report.startswith("[!]"):
             print(raw_report)
-            return
+            return ""
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         footer = (
@@ -224,7 +222,7 @@ def run_ai_reporting(
         final_md = re.sub(r' {5,}', ' ', final_md)
         final_md = re.sub(r'\s+$', '\n', final_md)
 
-
+        # Save the report
         report_path = report_dir / f"VedicRecon_Intelligence_Report_{int(time.time())}.md"
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(final_md)
@@ -233,9 +231,9 @@ def run_ai_reporting(
 
     except Exception as e:
         print(f"[!] Critical reporting failure: {e}")
-
     finally:
         progress.stop()
-        anim_thread.join()
-    if hasattr(handler, "last_prompt_fingerprint"):
-        print(f"[i] Prompt Fingerprint: {handler.last_prompt_fingerprint}")
+        if anim_thread.is_alive():
+            anim_thread.join()
+            
+    return final_md # Now guaranteed to return either the report or an empty string

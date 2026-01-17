@@ -105,7 +105,7 @@ It clearly separates:
 
 VedicRecon uses a strict, multi-stage pipeline:
 ```text
-Recon → Registry → Logic Engine → Deterministic Scoring → AI Narration → Privacy Scrubber → Report
+Recon → Registry → Logic Engine → Deterministic Scoring → AI Narration → Privacy Enforcement → Final Report
 ```
 
 ## Why this structure exists

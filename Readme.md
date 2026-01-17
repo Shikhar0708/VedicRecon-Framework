@@ -451,6 +451,7 @@ Clear Workspace (/output)
 **You must have authorization to scan any target.**
 
 **VedicRecon does not bypass protections and does not exploit systems.**
+
 ---
 ## License
 

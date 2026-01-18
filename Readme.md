@@ -76,7 +76,27 @@ This prevents:
 - Vendor hallucinations
 
 - Legal and professional misrepresentation
+
+- Budget Friendly 
 ---
+
+### Cost & Efficiency Considerations
+
+VedicRecon is intentionally designed to be **cost-efficient per execution**.
+
+- AI usage is limited strictly to **final narrative synthesis**
+- Deterministic logic, scoring, and analysis are performed **locally**
+- The selected model (**Gemini 2.5 Flash**) is optimized for fast summarization and low token usage
+
+As a result, a typical VedicRecon run consumes approximately **~1 RPD (request per day unit)**.
+
+This predictable, minimal consumption model ensures that:
+- The tool remains practical for repeated use
+- Costs do not scale with scan size or port count
+- AI usage never becomes a bottleneck or hidden expense
+
+Cost efficiency is a **design constraint**, not an optimization afterthought.
+
 ## 4. What VedicRecon CAN do
 
 VedicRecon can:
@@ -399,6 +419,40 @@ VedicRecon automatically executes:
 | Phase 8 | Deterministic Scoring (VMS) |
 | Phase 10 | AI Intelligence Synthesis |
 | Phase 11 | Privacy Scrubbing |
+
+---
+
+## AI Model & API Key Requirement
+
+VedicRecon uses an external Large Language Model (LLM) **only for narrative synthesis**.
+
+### Model Used
+- **Provider:** Google Gemini
+- **Model:** Gemini 2.5 Flash
+
+### When is the API key required?
+On first run, VedicRecon will prompt for a Gemini API key **only if AI narration is enabled**.
+
+### What the AI is used for
+The AI is used strictly to:
+- Convert structured, deterministic findings into clear human-readable language
+- Generate professional security narratives
+- Describe hypothesis-based attack reasoning
+
+### What the AI is NOT used for
+The AI is **never** used to:
+- Detect vulnerabilities
+- Identify vendors
+- Infer internal architecture
+- Make claims about unseen systems
+- Assign risk scores
+
+### Privacy & Data Handling
+- Sensitive identifiers (IPs, hostnames, banners, vendor names) are **sanitized before AI ingestion**
+- A second privacy enforcement pass is applied **after AI output**
+- The AI never receives raw scan data
+
+If no API key is provided, VedicRecon can still perform reconnaissance and scoring, but **it will fail loudly and no ai-report generation will happen**.
 
 
 ## Viewing Results

@@ -1,5 +1,4 @@
-VERSION = "1.1-BETA"
-
+from src import __version__ as VERSION
 import platform
 import sys
 import subprocess
@@ -12,6 +11,9 @@ import os
 import pandas as pd
 import re
 import ipaddress
+from markdown_pdf import MarkdownPdf, Section
+from rich.console import Console
+from rich.markdown import Markdown
 from src.logic_engine import run_logic_engine, build_fleet_exposure_table
 from src.scrubbing import PrivacyScrubber
 from src.ai_handler import run_ai_reporting
@@ -248,6 +250,9 @@ def handoff_to_ai():
         f.write(clean_report)
 
     print(f"\n{GREEN}{BOLD}[!] Final Intelligence Report lodged in: {final_report_path}{RESET}")
+    print(f"[*] Opening report:{final_report_path}")
+    time.sleep(2)
+    prettified_markdown(final_report_path)
 
 
 
@@ -260,6 +265,54 @@ def display_vms_gauge(vms_data):
     print(f"{color}[{bar}] {vms_data['score']}/100{RESET} ({BOLD}{vms_data['label']}{RESET})")
     for f in vms_data['justifications']: print(f"  └─ {f}")
 
+def prettified_markdown(filename):
+    console = Console(width=100)
+    try:
+        # 1. Read the raw text for the PDF engine
+        with open(filename, "r") as report:
+            raw_markdown_text = report.read()
+        
+        # 2. Prepare the Rich object for terminal viewing
+        rich_content = Markdown(raw_markdown_text)
+        
+        print("[*] Finalising contents...")
+        time.sleep(2) # Reduced sleep for better UX
+        
+        print("\n[?] Action Required:")
+        print("1. Generate PDF Report")
+        print("2. View in Terminal Only")
+        consent_input = input("Choice: ").strip()
+        
+        if consent_input == "1":
+            print("[+] Generating Consolidated PDF...")
+            
+            # Initialize PDF engine
+            pdf = MarkdownPdf()
+            
+            # Add the entire report as one section
+            pdf.add_section(Section(raw_markdown_text))
+            
+            # Define output path (Cleaned .md extension)
+            pdf_out = REPORTS_DIR / "pdf-converted-reports" / f"{Path(filename).stem}.pdf"
+            
+            # Ensure directory exists
+            pdf_out.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save the single PDF
+            pdf.save(str(pdf_out))
+            print(f"[+] Report exported: {pdf_out.name}")
+            
+        elif consent_input == "2":
+            print("[*] Skipping PDF generation.")
+        else:
+            print("[-] Invalid choice. Proceeding to terminal view.")
+
+        # 3. Always display the beautiful terminal version
+        console.print(rich_content)
+
+    except Exception as e:
+        print(f"[!] Reporting Error: {e}")
+
 def main():
     if not is_privileged():
         print(f"{RED}[!] Error: Run as Root/Admin for raw socket access.{RESET}")
@@ -267,9 +320,22 @@ def main():
 
     print(f"\n{CYAN}{BOLD}--- VedicRecon {VERSION} ---{RESET}")
     os_type = system_detection()
-
-    if not display_legal_boundary.check_status() or not verify_required_tools(os_type):
+        # Level 1: Legal Check
+    if display_legal_boundary.check_status():
+        
+        # Level 2: Tool Check (Only runs if Legal passed)
+        if verify_required_tools(os_type):
+            print(f"{GREEN}[+]{RESET} System integrity verified. Launching...")
+            # Continue to Session Handling
+            
+        else:
+            print(f"{RED}[!] Error: Required tools (Nmap/FFUF) are missing.{RESET}")
+            sys.exit(1)
+            
+    else:
+        print(f"{RED}[!] Error: Legal boundary must be accepted.{RESET}")
         sys.exit(1)
+
 
     session_signal = registry.session_handler()
     if session_signal == "RUN_NOW":

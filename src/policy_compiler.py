@@ -1,3 +1,4 @@
+from datetime import datetime
 class PolicyCompiler:
     """
     Compiles ai_profile.json + engine signals into a deterministic system prompt.
@@ -26,7 +27,7 @@ class PolicyCompiler:
         if not metrics.get("tone_binding", True):
             return "Neutral advisory tone."
 
-        # 🔐 NEW: Opaque / Ghosted Edge Handling
+        #  NEW: Opaque / Ghosted Edge Handling
         if edge_opacity == "high":
             return (
                 "Opaque Edge Posture — security controls appear intentionally non-attributable. "
@@ -71,8 +72,9 @@ class PolicyCompiler:
         Injects semantic guardrails to prevent 'over-assertion' on opaque targets.
         """
         tone = self._compile_tone(vms_score, edge_opacity=edge_opacity)
+        report_date=datetime.now().strftime("%B %d, %Y")
         
-        # MANDATORY: Observability Guardrails (The Butterfly Fix 🦋)
+        # MANDATORY: Observability Guardrails (The Butterfly Fix )
         # This prevents the AI from saying "There is no WAF" and forces "No WAF observed"
         semantic_calibration = (
             "\n[!] SEMANTIC GUARDRAIL (CRITICAL):\n"
@@ -103,6 +105,9 @@ class PolicyCompiler:
         )
 
         return (
+            #dynamic header injection
+            f"# Strategic Security Report: {report_date}\n"
+            f"## Subject: Foundational Infrastructure Remediation for Directly Exposed Services\n\n"
             f"ROLE: {profile_data['role']}\n"
             f"FOCUS: {profile_data['focus']}\n"
             f"CONTEXT: {context_instruction}{meltdown_protocol}{semantic_calibration}\n"

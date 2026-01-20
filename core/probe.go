@@ -29,7 +29,7 @@ func RunRecon(target string, id string, flags string, registryPath string, port 
 
 	args = append(args, target)
 	//debug the nmap command
-	fmt.Printf("[DEBUG] Final nmap args: %v\n", args)
+	//fmt.Printf("[DEBUG] Final nmap args: %v\n", args)
 
 	out, err := exec.Command("nmap", args...).CombinedOutput()
 	nmapOutput := string(out)

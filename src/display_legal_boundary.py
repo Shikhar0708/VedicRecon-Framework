@@ -1,24 +1,27 @@
+import json
 import time
 import sys
-import json
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # Move up from src to root
-CONFIG_PATH = BASE_DIR / "config" / "profiles.json"
+# Move up to root and then into config
+BASE_DIR = Path(__file__).resolve().parent.parent
+LEGAL_JSON = BASE_DIR / "config" / "legal_status.json"
 
-def display_legal_boundary():
-    # Use Path for cross-platform reliability
-
-    
-    # 1. Persistence Check: Skip if already verified
-    if CONFIG_PATH.exists():
+def check_status():
+    """Independent check for the legal flag."""
+    if LEGAL_JSON.exists():
         try:
-            with open(CONFIG_PATH, "r") as f:
-                existing_data = json.load(f)
-                if existing_data.get("legal_status") == "verified":
+            with open(LEGAL_JSON, "r") as f:
+                data = json.load(f)
+                if data.get("status") == "verified":
                     return True
-        except (json.JSONDecodeError, KeyError):
+        except:
             pass
+    
+    # If file doesn't exist or isn't verified, run the prompt
+    return run_legal_prompt()
+
+def run_legal_prompt():
 
     notice = f"""
     {"="*60}
@@ -42,42 +45,17 @@ def display_legal_boundary():
     """
     print(notice)
     
-    # Industrial "Speed Bump" - makes the user actually read it
     try:
-        confirmation = input("[?] Type 'ACCEPT' to acknowledge: ").strip().upper()
-        if confirmation == "ACCEPT":
-            print("[+] Verifying integrity, please wait...")
+        confirm = input("[?] Type 'ACCEPT' to continue: ").strip().upper()
+        if confirm == "ACCEPT":
+            # Create the NEW separate JSON file
+            with open(LEGAL_JSON, "w") as f:
+                json.dump({"status": "verified", "accepted_at": time.time()}, f, indent=2)
             
-            # 2. READ: Load the current dictionary
-            with open(CONFIG_PATH, "r") as file:
-                file_data = json.load(file)
-            
-            # 3. MODIFY: Update the dictionary
-            file_data["legal_status"] = "verified"
-            
-            # 4. WRITE: Overwrite with the full updated data
-            with open(CONFIG_PATH, "w") as final_file:
-                # Correct syntax: json.dump(WHAT, WHERE)
-                json.dump(file_data, final_file, indent=2)
-            
-            print("\n[+] Integrity Verified. Unlocking Scope Definition...")
-            time.sleep(1)
-            print("\n[+] Rerun the program to use.")
-            sys.exit(0)
+            print("\n[+] Status recorded. Accessing Framework...")
+            return True
         else:
-            print("[!] Agreement not accepted. Exiting.")
+            print("[!] Agreement rejected.")
             sys.exit(0)
     except KeyboardInterrupt:
         sys.exit(0)
-
-#creating a function to check status
-def check_status():
-    with open(CONFIG_PATH, "r") as check:
-        status = json.load(check)
-        try:
-            if status["legal_status"] == "verified":
-                return True
-        except(KeyError, json.JSONDecodeError):
-            display_legal_boundary()
-            time.sleep(1)
-            return True

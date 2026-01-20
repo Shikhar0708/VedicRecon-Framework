@@ -1,11 +1,8 @@
-import ipaddress
-import sys
 from pathlib import Path
 import re
-from . import registry
+from . import registry,parse_target
 
-base_dir=Path(__file__).resolve().parent
-#domain_validation
+# domain validation
 DOMAIN_REGEX = re.compile(
     r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)"
     r"(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$"
@@ -14,53 +11,47 @@ DOMAIN_REGEX = re.compile(
 def is_valid_domain(value: str) -> bool:
     return bool(DOMAIN_REGEX.fullmatch(value))
 
-#ipv4-look-alike issue resolved
 
 def looks_like_ipv4(value: str) -> bool:
     parts = value.split(".")
-    if len(parts) != 4:
-        return False
-    return all(p.isdigit() for p in parts)
+    return len(parts) == 4 and all(p.isdigit() for p in parts)
+
 
 def bulk_input_file(filename: Path):
     if not filename.exists():
         print("[!] File does not exist")
-        sys.exit(1)
+        return
 
-    if filename.stat().st_size == 0:
-        print("[!] Empty file provided")
-        sys.exit(0)
+    with open(filename, "r", encoding="utf-8", errors="ignore") as file:
+        lines = [
+            line.strip().replace("\ufeff", "")
+            for line in file
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
 
-    with open(filename, "r") as file:
-        targets = [line.strip() for line in file if line.strip()]
+    final_registry_list = []
 
-    for raw_val in targets:
-        try:
-            ipaddress.ip_address(raw_val)
-            target_type = "IP"
+    for raw in lines:
+        host = raw
+        port = None
 
-        except ValueError:
-            try:
-                ipaddress.ip_network(raw_val, strict=False)
-                target_type = "CIDR"
+        # --- PORT EXTRACTION (NO VALIDATION) ---
+        if ":" in raw:
+            left, right = raw.rsplit(":", 1)
+            if right.isdigit():
+                host = left.strip()
+                port = right.strip()
 
-            except ValueError:
-                if looks_like_ipv4(raw_val):
-                    print(f"[-] Invalid IPv4 address: {raw_val}")
-                    continue
+        final_registry_list.append({
+            "Target_Name": raw,
+            "Input_Value": host,
+            "Assigned_Port": port,
+            "Notes": "Bulk imported"
+        })
 
-                if is_valid_domain(raw_val):
-                    target_type = "DOMAIN"
-                else:
-                    print(f"[-] Invalid target format: {raw_val}")
-                    continue
+    if not final_registry_list:
+        print("[!] No targets extracted from file.")
+        return
 
-        target_entry = {
-            "Target_Name": raw_val,
-            "Input_Value": raw_val,
-            "Notes": f"Declared as {target_type}"
-        }
-
-        registry.add_targets_to_registry([target_entry])
-
+    registry.add_targets_to_registry(final_registry_list)
 

@@ -162,26 +162,38 @@ def build_fleet_exposure_table(inventory):
     rows = []
 
     for node in inventory:
-        ports = node["technical_details"]["ports"].split("|")
-        services = node["technical_details"]["services"].split("|")
+        ports_raw = node.get("technical_details", {}).get("ports", "TBD")
+        services_raw = node.get("technical_details", {}).get("services", "TBD")
+
+        # Skip entire node if nothing observable
+        if ports_raw == "TBD" or services_raw == "TBD":
+            continue
+
+        ports = [p.strip() for p in ports_raw.split("|")]
+        services = [s.strip() for s in services_raw.split("|")]
 
         for p, s in zip(ports, services):
+
+            # --- HARD OBSERVABILITY FILTER ---
+            if not p or not s or p == "TBD" or s == "TBD":
+                continue
+
             rows.append({
                 "port": p,
                 "service": s,
                 "risk": (
                     "Critical" if "27017" in p else
-                    "High" if p in ["22/tcp", "3000/tcp", "8080/tcp"] else
+                    "High" if p in {"22/tcp", "3000/tcp", "8080/tcp"} else
                     "Medium"
                 ),
                 "note": (
                     "Unverified Service Attribution"
-                    if "?" in s or "tcpwrapped" in s
+                    if ("?" in s or "tcpwrapped" in s)
                     else "Externally reachable"
                 )
             })
 
-    # De-duplicate by port+service
+    # --- De-duplicate by observable tuple ---
     unique = {
         (r["port"], r["service"]): r
         for r in rows

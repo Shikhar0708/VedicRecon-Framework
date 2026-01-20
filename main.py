@@ -9,9 +9,9 @@ import json
 import shutil
 import ctypes
 import os
+import pandas as pd
 import re
 import ipaddress
-import pandas as pd
 from src.logic_engine import run_logic_engine, build_fleet_exposure_table
 from src.scrubbing import PrivacyScrubber
 from src.ai_handler import run_ai_reporting
@@ -144,6 +144,34 @@ def run_discovery_pipeline():
         stream_go_process([str(GO_BINARY), "--registry", str(registry.CSV_FILE), "--fuzz"])
 
     handoff_to_ai()
+
+def run_bulk_discovery_pipeline():
+    if not GO_BINARY.exists():
+        print("[!] Go binary missing.")
+        return
+
+    df = pd.read_csv(registry.CSV_FILE)
+    if df.empty:
+        print("[!] Registry is empty. Add targets first.")
+        return
+
+    print(
+        f"\n{CYAN}{BOLD}[+] Starting BULK fleet discovery "
+        f"({len(df)} targets){RESET}"
+    )
+
+    # SINGLE INVOCATION — Go handles ports internally
+    cmd = [
+        str(GO_BINARY),
+        "--registry",
+        str(registry.CSV_FILE),
+    ]
+
+    stream_go_process(cmd)
+
+    print(f"\n{GREEN}[+] Bulk discovery completed for all targets.{RESET}")
+    handoff_to_ai()
+
 
 def handoff_to_ai():
     """Surgical Intelligence Orchestration: RAW DATA → BULK VMS → AI → SCRUBBER."""
@@ -311,7 +339,7 @@ def main():
                 if input(
                     f"{YELLOW}[?]{RESET} Launch discovery pipeline now? (y/n): "
                 ).lower() == "y":
-                    run_discovery_pipeline()
+                    run_bulk_discovery_pipeline()
                 break
             else:
                 print(f"[!] File not found: {file_path}")

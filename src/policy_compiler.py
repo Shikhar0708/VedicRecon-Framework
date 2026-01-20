@@ -76,16 +76,19 @@ class PolicyCompiler:
         # This prevents the AI from saying "There is no WAF" and forces "No WAF observed"
         semantic_calibration = (
             "\n[!] SEMANTIC GUARDRAIL (CRITICAL):\n"
-            "- Do NOT claim a defense is 'absent' or 'missing' unless verified by clear error messages.\n"
+            "- Do NOT claim a defense is 'absent', 'missing', or 'not present' unless verified by explicit error responses.\n"
+            "- DO NOT use phrases such as 'No Edge Protection', 'Zero Defensive Density', or 'Lack of Security Controls'.\n"
+            "- USE: 'No observable edge abstraction detected from external posture'.\n"
+            "- USE: 'Internal defensive density not verifiable from black-box observation'.\n"
             "- DO NOT name or attribute any vendor, CDN, cloud provider, or security product "
             "unless its name appears verbatim in the raw scan evidence.\n"
-            "- USE: 'Opaque / non-attributable edge behavior' instead of naming providers (e.g., CDN, WAF).\n"
-            "- USE: 'Defensive density not verifiable from external posture' INSTEAD OF 'Zero security'.\n"
-            "- USE: 'Externally reachable without observable abstraction' INSTEAD OF 'Directly vulnerable'.\n"
+            "- USE: 'Opaque / non-attributable edge behavior' instead of naming providers.\n"
             "- FRAME all attack discussion strictly as a 'Potential Attack Hypothesis'.\n"
-            "- If a service name is derived solely from port heuristics and not banner confirmation,explicitly label it as 'Unverified Service Attribution'.\n"
+            "- If a service name is derived solely from port heuristics and not banner confirmation, "
+            "explicitly label it as 'Unverified Service Attribution'.\n"
             "- Do NOT assume protocol semantics or historical use cases."
         )
+
 
         meltdown_protocol = (
             f"\n[!] ALERT: VMS SCORE IS CRITICAL ({vms_score}/100).\n"

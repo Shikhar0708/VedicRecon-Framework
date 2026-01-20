@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 )
 
-// --- CONFIG STRUCT (must match profiles.json) ---
+// --- CONFIG STRUCT ---
 type Config struct {
 	Nmap struct {
 		ScanProfiles map[string]struct {
@@ -27,39 +28,44 @@ type Config struct {
 	} `json:"ffuf"`
 }
 
+const (
+	IDX_TARGET_ID     = 0
+	IDX_INPUT_VALUE   = 2
+	IDX_ASSIGNED_PORT = 10
+)
+
 func main() {
+
 	// ---------------- FLAGS ----------------
 	registryPath := flag.String("registry", "", "Path to targets.csv (required)")
 	configPath := flag.String("config", "config/profiles.json", "Path to profiles.json")
 	wordlistPath := flag.String("wordlist", "", "Path to wordlist (Phase 6)")
 	fuzzEnabled := flag.Bool("fuzz", false, "Execute Phase 6 enumeration")
-	port := flag.String("port", "", "Scan a single port only (diagnostic mode)")
-
+	globalPort := flag.String("port", "", "Scan a single port only (diagnostic override)")
 	flag.Parse()
 
-	// ---------------- VALIDATION ----------------
 	if *registryPath == "" {
-		fmt.Println("[!] Error: --registry path is required.")
+		fmt.Println("[!] Error: --registry is required")
 		os.Exit(1)
 	}
 
 	// ---------------- LOAD CONFIG ----------------
 	cfgFile, err := os.ReadFile(*configPath)
 	if err != nil {
-		fmt.Printf("[!] Critical: Could not read config at %s: %v\n", *configPath, err)
+		fmt.Printf("[!] Could not read config: %v\n", err)
 		os.Exit(1)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(cfgFile, &cfg); err != nil {
-		fmt.Printf("[!] Critical: Invalid JSON in %s: %v\n", *configPath, err)
+		fmt.Printf("[!] Invalid config JSON: %v\n", err)
 		os.Exit(1)
 	}
 
 	// ---------------- OPEN REGISTRY ----------------
 	file, err := os.Open(*registryPath)
 	if err != nil {
-		fmt.Printf("[!] Critical: Could not open registry at %s: %v\n", *registryPath, err)
+		fmt.Printf("[!] Could not open registry: %v\n", err)
 		os.Exit(1)
 	}
 	defer file.Close()
@@ -67,12 +73,15 @@ func main() {
 	reader := csv.NewReader(file)
 	reader.Read() // skip header
 
-	// ---------------- CONCURRENCY CONTROL ----------------
-	// Hard cap: 5 concurrent scans (safe for laptops / VPS)
-	semaphore := make(chan struct{}, 5)
-	var wg sync.WaitGroup
+	// ---------------- BUILD IP → PORT SET ----------------
+	type Target struct {
+		ID    string
+		IP    string
+		Ports map[string]bool
+	}
 
-	// ---------------- PROCESS TARGETS ----------------
+	targets := make(map[string]*Target)
+
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -82,42 +91,92 @@ func main() {
 			continue
 		}
 
-		targetID := record[0]
-		targetIP := record[2]
+		id := record[IDX_TARGET_ID]
+		ip := record[IDX_INPUT_VALUE]
 
+		if _, exists := targets[ip]; !exists {
+			targets[ip] = &Target{
+				ID:    id,
+				IP:    ip,
+				Ports: make(map[string]bool),
+			}
+		}
+
+		if len(record) > IDX_ASSIGNED_PORT {
+			port := strings.TrimSpace(record[IDX_ASSIGNED_PORT])
+			if port != "" {
+				targets[ip].Ports[port] = true
+			}
+		}
+	}
+
+	// ---------------- CONCURRENCY ----------------
+	semaphore := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+
+	// ---------------- SCAN EACH IP ONCE ----------------
+	for _, t := range targets {
 		wg.Add(1)
-		go func(id, ip string) {
-			defer wg.Done()
 
-			semaphore <- struct{}{}        // acquire
-			defer func() { <-semaphore }() // release
+		go func(target *Target) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			// ---------------- PORT RESOLUTION ----------------
+			effectivePort := ""
+
+			if *globalPort != "" {
+				effectivePort = *globalPort
+			} else if len(target.Ports) > 0 {
+				var ports []string
+				for p := range target.Ports {
+					ports = append(ports, p)
+				}
+				effectivePort = strings.Join(ports, ",")
+			}
+
+			// ---------------- PROFILE SELECTION (FIX) ----------------
+			scanProfile := "framework_aggressive"
+			if effectivePort != "" {
+				scanProfile = "framework_diagnostic"
+			}
+
+			fmt.Printf(
+				"[*] Scanning %s | Profile=%s | Ports=%s\n",
+				target.IP,
+				scanProfile,
+				func() string {
+					if effectivePort == "" {
+						return "FULL"
+					}
+					return effectivePort
+				}(),
+			)
 
 			if !*fuzzEnabled {
-				// --- PHASES 2 / 4 / 5 ---
 				RunRecon(
-					ip,
-					id,
-					cfg.Nmap.ScanProfiles["framework_aggressive"].Flags,
+					target.IP,
+					target.ID,
+					cfg.Nmap.ScanProfiles[scanProfile].Flags,
 					*registryPath,
-					*port, // diagnostic override (may be empty)
+					effectivePort,
 				)
-			} else {
-				// --- PHASE 6: ENUMERATION ---
-				if *wordlistPath != "" {
-					profile := cfg.Ffuf.Profiles["stealth"]
-					RunEnumeration(
-						ip,
-						*wordlistPath,
-						"stealth",
-						profile.Extensions,
-						profile.Threads,
-						profile.Delay,
-					)
-				}
+			} else if *wordlistPath != "" {
+				profile := cfg.Ffuf.Profiles["stealth"]
+				RunEnumeration(
+					target.IP,
+					*wordlistPath,
+					"stealth",
+					profile.Extensions,
+					profile.Threads,
+					profile.Delay,
+				)
 			}
-		}(targetID, targetIP)
+
+		}(t)
 	}
 
 	wg.Wait()
-	fmt.Println("\n[+] All targets in registry processed.")
+	fmt.Println("\n[+] All targets processed exactly once.")
 }

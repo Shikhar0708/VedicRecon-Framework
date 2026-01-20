@@ -157,3 +157,34 @@ def run_logic_engine(csv_path: Path, output_json: Path):
         json.dump(analysis, f, indent=4)
     
     return analysis
+
+def build_fleet_exposure_table(inventory):
+    rows = []
+
+    for node in inventory:
+        ports = node["technical_details"]["ports"].split("|")
+        services = node["technical_details"]["services"].split("|")
+
+        for p, s in zip(ports, services):
+            rows.append({
+                "port": p,
+                "service": s,
+                "risk": (
+                    "Critical" if "27017" in p else
+                    "High" if p in ["22/tcp", "3000/tcp", "8080/tcp"] else
+                    "Medium"
+                ),
+                "note": (
+                    "Unverified Service Attribution"
+                    if "?" in s or "tcpwrapped" in s
+                    else "Externally reachable"
+                )
+            })
+
+    # De-duplicate by port+service
+    unique = {
+        (r["port"], r["service"]): r
+        for r in rows
+    }
+
+    return list(unique.values())

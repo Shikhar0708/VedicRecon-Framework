@@ -1,7 +1,7 @@
 class PolicyCompiler:
     """
     Compiles ai_profile.json + engine signals into a deterministic system prompt.
-    v1.0.1-alpha: Hardened for Observability-focused black-box auditing.
+    v1.1-Beta: Hardened for Observability-focused black-box auditing.
     """
 
     def __init__(self, config: dict):
@@ -33,7 +33,7 @@ class PolicyCompiler:
                 "Focus on limits of external verification rather than assumed weakness."
             )
 
-        # 🔢 Standard maturity-based tone
+        # Standard maturity-based tone
         if vms_score >= 80:
             return "Defensive Excellence — focus on micro-optimizations."
         elif vms_score >= 50:
@@ -119,7 +119,12 @@ class PolicyCompiler:
             "TABLE FORMATTING RULES:\n"
             "1. Every Markdown table row MUST end with '|'.\n"
             "2. Columns: | Port | Service | Risk Class | Observability Note |\n"
-            "3. If a service is 'tcpwrapped', note it as 'Obscured/Non-Attributable'.\n\n"
+            "3. If a service is 'tcpwrapped', note it as 'Obscured/Non-Attributable'.\n"
+            "4. Fleet-Wide Exposure Summary tables MUST be populated ONLY using "
+            "explicit fleet_exposure data provided in the analysis context.\n"
+            "5. If no fleet_exposure data is present, the table MUST NOT be populated.\n"
+            "6. DO NOT infer, guess, or synthesize table rows.\n\n"
+
 
             "BETA DISCLAIMER:\n"
             "Include this at the end: 'Assessments reflect externally observable posture only. "

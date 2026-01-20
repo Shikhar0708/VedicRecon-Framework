@@ -12,10 +12,10 @@ import os
 import re
 import ipaddress
 import pandas as pd
-from src.logic_engine import run_logic_engine
+from src.logic_engine import run_logic_engine, build_fleet_exposure_table
 from src.scrubbing import PrivacyScrubber
 from src.ai_handler import run_ai_reporting
-from src import display_legal_boundary, registry
+from src import display_legal_boundary, registry, bulk_input_registry, bulk_vms_runner
 from src.vms_engine import calculate_vms
 
 # --- PATH CONFIGURATION ---
@@ -98,8 +98,9 @@ def stream_go_process(args, prefix="> "):
     for line in process.stdout:
         line_str = line.strip()
         if "open port" in line_str.lower(): print(f"    {GREEN}[PORT FOUND]{RESET} {line_str}")
-        elif "os details" in line_str.lower(): print(f"    {CYAN}{BOLD}💻 OS DETECTED: {line_str}{RESET}")
+        elif "os details" in line_str.lower(): print(f"    {CYAN}{BOLD}OS DETECTED: {line_str}{RESET}")
         else: print(f"  {prefix} {line_str}")
+    process.stdout.close()
     process.wait()
     return process.returncode
 
@@ -145,64 +146,70 @@ def run_discovery_pipeline():
     handoff_to_ai()
 
 def handoff_to_ai():
-    """Surgical Intelligence Orchestration: RAW DATA → SCORE → AI → SCRUBBER."""
+    """Surgical Intelligence Orchestration: RAW DATA → BULK VMS → AI → SCRUBBER."""
     print("\n" + "=" * 50)
     print(f"{CYAN}{BOLD}[*] STARTING SURGICAL INTELLIGENCE LAYER{RESET}")
     print("=" * 50)
 
     analysis_json = OUTPUT_DIR / "analysis_summary.json"
+
+    # --- Phase 7: Logic Correlation ---
     print(f"{BLUE}[+]{RESET} Phase 7: Correlating infrastructure patterns...")
     analysis = run_logic_engine(registry.CSV_FILE, analysis_json)
 
-    # --- Registry sanity check ---
-    df = pd.read_csv(registry.CSV_FILE)
-    if df.empty or not analysis.get("inventory"):
+    # --- Phase 8: BULK VMS (AUTHORITATIVE) ---
+    analysis["inventory"] = bulk_vms_runner.run_bulk_vms(analysis["inventory"])
+    node_count = len(analysis["inventory"])
+
+    if node_count == 0:
         print(f"{RED}[!] Error: No valid targets to score.{RESET}")
         return
 
-    # --- Canonical Target Selection (SINGLE SOURCE OF TRUTH) ---
-    target = analysis["inventory"][-1]  # last processed target
+    # --- Fleet Exposure Table (Deterministic) ---
+    analysis["fleet_exposure"] = build_fleet_exposure_table(
+        analysis["inventory"]
+    )
 
-    # --- Canonical VMS Input (schema-locked) ---
-    vms_input = {
-        "ports": target["technical_details"]["ports"],
-        "services": target["technical_details"]["services"],
-        "banners": target["technical_details"]["os"],
-        "is_edge_protected": analysis["global_stats"]["defense_landscape"]["is_edge_protected"],
-        "defensive_density": analysis["global_stats"]["defense_landscape"]["defensive_density"],
-    }
+    # CRITICAL: Persist FINAL analysis for AI consumption
+    with open(analysis_json, "w", encoding="utf-8") as f:
+        json.dump(analysis, f, indent=4)
 
+    # --- Reporting Anchor Selection ---
+    # Strategy: worst-scoring node (most critical exposure)
+    primary_node = min(
+        analysis["inventory"],
+        key=lambda n: n.get("vms", {}).get("score", 100)
+    )
 
-    # --- Phase 8: Deterministic Scoring ---
-    vms_score, findings, edge_opacity = calculate_vms(vms_input)
-    analysis["edge_opacity"] = edge_opacity
+    primary_vms = primary_node["vms"]
 
-    # Persist score back to registry (UI / continuity)
-    df.at[df.index[-1], "VMS_Score"] = vms_score
-    df.to_csv(registry.CSV_FILE, index=False)
-
+    # --- UI Continuity (non-authoritative) ---
     display_vms_gauge({
-        "score": vms_score,
-        "label": "EXCELLENT" if vms_score >= 80 else "DEVELOPING" if vms_score >= 50 else "CRITICAL",
-        "justifications": findings
+        "score": primary_vms["score"],
+        "label": (
+            "EXCELLENT" if primary_vms["score"] >= 80 else
+            "DEVELOPING" if primary_vms["score"] >= 50 else
+            "CRITICAL"
+        ),
+        "justifications": primary_vms["findings"]
     })
 
     # --- Phase 10: AI Intelligence Generation ---
-    print(f"{BLUE}[+]{RESET} Phase 10: Generating Intelligence Report (Raw Logic Context)...")
+    print(f"{BLUE}[+]{RESET} Phase 10: Generating Intelligence Report (Bulk Context)...")
     raw_markdown_report = run_ai_reporting(
         analysis_json,
         REPORTS_DIR,
         AI_PROFILE,
-        vms_score,
-        node_count=1,
-        edge_opacity=edge_opacity
+        primary_vms["score"],
+        node_count=node_count,
+        edge_opacity=primary_vms["edge_opacity"]
     )
 
     if not raw_markdown_report:
         print(f"{RED}[!] Reporting failed. Skipping Phase 11.{RESET}")
         return
 
-    # --- Phase 11: Privacy Scrubbing (Post-AI, Final Gate) ---
+    # --- Phase 11: Privacy Scrubbing (Final Gate) ---
     print(f"{BLUE}[+]{RESET} Phase 11: Applying privacy filters to final report...")
     final_report_path = REPORTS_DIR / f"VedicRecon_Surgical_Report_{int(time.time())}.md"
 
@@ -213,6 +220,8 @@ def handoff_to_ai():
         f.write(clean_report)
 
     print(f"\n{GREEN}{BOLD}[!] Final Intelligence Report lodged in: {final_report_path}{RESET}")
+
+
 
 def display_vms_gauge(vms_data):
     bar_width = 20
@@ -242,7 +251,7 @@ def main():
     while True:
         print(f"\n{BOLD}[VedicRecon Station]{RESET}")
         print("1. Add New Target(s)")
-        print("2. Run Pipeline on All Registered Targets")
+        print("2. Bulk input(expected file type : txt)")
         print("3. Clear Workspace (/output)")
         print("0. Exit")
         
@@ -294,8 +303,19 @@ def main():
             break
 
         elif choice == "2":
-            run_discovery_pipeline()
-            break
+            file_name=input("[+] Enter file name (from /targets):").strip()
+            file_path=BASE_DIR/"targets"/file_name
+            if file_path.exists():
+                print(f"[+] Found file {file_path}")
+                bulk_input_registry.bulk_input_file(file_path)
+                if input(
+                    f"{YELLOW}[?]{RESET} Launch discovery pipeline now? (y/n): "
+                ).lower() == "y":
+                    run_discovery_pipeline()
+                break
+            else:
+                print(f"[!] File not found: {file_path}")
+                continue
         elif choice == "3":
             if input(f"{RED}[!] Clear workspace? (y/n): {RESET}").lower() == 'y':
                 for f in OUTPUT_DIR.glob('*'): f.unlink() if f.is_file() else None

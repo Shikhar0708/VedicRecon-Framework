@@ -3,7 +3,6 @@ import time
 import sys
 import threading
 import re
-import random
 from pathlib import Path
 from datetime import datetime
 from google import genai
@@ -183,35 +182,35 @@ def normalize_governance_noise(text: str) -> str:
     return text
 
 def normalize_markdown_tables(text: str) -> str:
-    """
-    Repairs malformed markdown tables produced by LLMs.
-    Ensures headers, separators, and row termination.
-    """
+    if not text:
+        return ""
+
     lines = text.splitlines()
-    text = re.sub(r"\|\s*Rationale\s*\(\s*\|", "| Rationale |", text)
     fixed = []
-    in_table = False
     header_seen = False
 
-    for line in lines:
+    for i, line in enumerate(lines):
         if line.strip().startswith("|"):
-            in_table = True
-
             # Ensure row ends with pipe
             if not line.rstrip().endswith("|"):
                 line = line.rstrip() + " |"
 
-            # Detect header row
             if not header_seen:
                 fixed.append(line)
-                col_count = line.count("|") - 1
-                fixed.append("|" + " --- |" * col_count)
+
+                # Look ahead safely
+                next_line = lines[i + 1] if i + 1 < len(lines) else ""
+
+                if not re.match(r"^\|\s*-+", next_line):
+                    col_count = line.count("|") - 1
+                    fixed.append("|" + " --- |" * col_count)
+
                 header_seen = True
                 continue
 
             fixed.append(line)
+
         else:
-            in_table = False
             header_seen = False
             fixed.append(line)
 
